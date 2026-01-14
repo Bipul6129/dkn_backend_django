@@ -89,7 +89,7 @@ MIDDLEWARE = [
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",                     # Vite dev
-    "https://your-frontend-name.vercel.app",    # update after Vercel deploy
+    "https://dkn-frontend-react.vercel.app/",    # update after Vercel deploy
 ]
 
 
