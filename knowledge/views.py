@@ -64,27 +64,47 @@ class SubmitForReviewView(APIView):
 
 class ReviewQueueView(APIView):
     """
-    CHAMPION sees CHAMPION stage queue
-    OFFICER sees REGIONAL_OFFICER stage queue
-    ADMIN sees GOV_COUNCIL stage queue (until you add a council role)
+    CHAMPION sees CHAMPION stage queue (only their region + GLOBAL)
+    OFFICER sees REGIONAL_OFFICER stage queue (only their region + GLOBAL)
+    GOV COUNCIL / ADMIN sees GOV_COUNCIL stage queue (all regions)
     """
     permission_classes = [IsReviewer]  # enforce inside
 
     def get(self, request):
+        user = request.user
+
+        # Determine stage + whether we should region-limit
         if IsChampion().has_permission(request, self):
             stage = KnowledgeResource.ReviewStage.CHAMPION
+            limit_by_region = True
         elif IsOfficer().has_permission(request, self):
             stage = KnowledgeResource.ReviewStage.REGIONAL_OFFICER
+            limit_by_region = True
         elif IsGovCouncil().has_permission(request, self) or IsAdminRole().has_permission(request, self):
             stage = KnowledgeResource.ReviewStage.GOV_COUNCIL
+            limit_by_region = False  # council/admin see all
         else:
             return Response({"detail": "Not allowed."}, status=403)
 
-
         qs = KnowledgeResource.objects.filter(
             status=KnowledgeResource.Status.PENDING_REVIEW,
-            current_stage=stage
-        ).order_by("-submitted_at", "-created_at")
+            current_stage=stage,
+        )
+
+        # Apply region filter for Champion / Officer
+        if limit_by_region:
+            user_region = getattr(user, "region", None)
+
+            if user_region:
+                # only resources for user's region OR GLOBAL
+                qs = qs.filter(
+                    Q(region=user_region) | Q(region=Region.GLOBAL)
+                )
+            else:
+                # if somehow user has no region, show only GLOBAL
+                qs = qs.filter(region=Region.GLOBAL)
+
+        qs = qs.order_by("-submitted_at", "-created_at")
 
         return Response(KnowledgeResourceQueueSerializer(qs, many=True).data, status=200)
 
