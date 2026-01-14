@@ -1,0 +1,28 @@
+# Python / Django
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.sqlite3
+db.sqlite3
+
+# Virtual env
+env/
+venv/
+.venv/
+
+# Migrations cache (optional, many people commit migrations though)
+# */migrations/__pycache__/
+
+# Env / secrets
+.env
+.env.*
+
+# VSCode / IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
