@@ -1,1 +1,1 @@
-web: gunicorn dkn_backend.wsgi:application
+python manage.py migrate && python manage.py collectstatic --noinput && web: gunicorn dkn_backend.wsgi:application
