@@ -1,0 +1,1 @@
+web: gunicorn dkn_backend.wsgi:application
