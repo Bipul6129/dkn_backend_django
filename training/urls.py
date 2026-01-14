@@ -11,7 +11,8 @@ from .views import (
     TrainingQuestionDetailManageView,
     TrainingOptionListCreateView,
     TrainingOptionDetailManageView,
-    TrainingMaterialDetailView
+    TrainingMaterialDetailView,
+    CourseLeaderboardView
 )
 
 
@@ -66,4 +67,11 @@ urlpatterns = [
     ),
 
     path("my-attempts/", MyTrainingAttemptsView.as_view(), name="training-my-attempts"),
+
+    # 🏆 leaderboard
+    path(
+        "courses/<int:course_id>/leaderboard/",
+        CourseLeaderboardView.as_view(),
+        name="training-course-leaderboard",
+    ),
 ]

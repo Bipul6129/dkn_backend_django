@@ -23,7 +23,8 @@ from .serializers import (
     TrainingAttemptSerializer,
     QuizSubmitSerializer,
     TrainingQuestionManageSerializer,
-    TrainingOptionManageSerializer
+    TrainingOptionManageSerializer,
+    CourseLeaderboardEntrySerializer
 )
 
 
@@ -31,6 +32,8 @@ from .serializers import (
 def is_champion(user):
     # you already use user.role in other apps
     return getattr(user, "role", None) == "CHAMPION"
+
+
 
 
 class TrainingCourseListCreateView(APIView):
@@ -630,3 +633,63 @@ class TrainingOptionDetailManageView(APIView):
 
         option.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+class CourseLeaderboardView(APIView):
+    """
+    GET /api/training/courses/<course_id>/leaderboard/
+
+    Returns one entry per user: their best attempt for that course,
+    ordered by highest percentage score.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, course_id):
+        course = get_object_or_404(TrainingCourse, id=course_id)
+        user = request.user
+        region = getattr(user, "region", None)
+
+        # ---- access control (mirror quiz access rules) ----
+        # Champion who created the course can always see its leaderboard
+        if not (
+            (is_champion(user) and course.created_by_id == user.id)
+            or (
+                course.status == TrainingCourse.Status.PUBLISHED
+                and (
+                    course.region == Region.GLOBAL
+                    or (region and course.region == region)
+                )
+            )
+        ):
+            return Response(
+                {"detail": "You do not have access to this leaderboard."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # ---- get best attempt per user ----
+        # Order attempts so the "best" per user comes first:
+        #  1) higher score
+        #  2) more questions (tiny tiebreak)
+        #  3) latest submitted_at
+        qs = (
+            TrainingAttempt.objects.filter(course=course)
+            .select_related("user")
+            .order_by(
+                "user_id",
+                "-score",
+                "-total_questions",
+                "-submitted_at",
+            )
+        )
+
+        # On Postgres: distinct on user_id to keep the first row per user
+        qs = qs.distinct("user_id")[:20]  # top 20 users
+
+        serializer = CourseLeaderboardEntrySerializer(qs, many=True)
+        data = list(serializer.data)
+
+        # add rank (1-based) for convenience
+        for idx, row in enumerate(data, start=1):
+            row["rank"] = idx
+
+        return Response(data, status=status.HTTP_200_OK)

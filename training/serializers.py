@@ -1,3 +1,4 @@
+# serializers.py
 from rest_framework import serializers
 
 from .models import (
@@ -27,6 +28,10 @@ class TrainingCourseListSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(
         source="created_by.username", read_only=True
     )
+    # 👇 expose creator id for frontend checks
+    created_by = serializers.IntegerField(
+        source="created_by.id", read_only=True
+    )
 
     class Meta:
         model = TrainingCourse
@@ -36,6 +41,7 @@ class TrainingCourseListSerializer(serializers.ModelSerializer):
             "description",
             "status",
             "region",
+            "created_by",       # 👈 added
             "created_by_name",
             "created_at",
             "updated_at",
@@ -45,6 +51,9 @@ class TrainingCourseListSerializer(serializers.ModelSerializer):
 class TrainingCourseDetailSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(
         source="created_by.username", read_only=True
+    )
+    created_by = serializers.IntegerField(
+        source="created_by.id", read_only=True
     )
     materials = TrainingMaterialSerializer(many=True, read_only=True)
 
@@ -56,6 +65,7 @@ class TrainingCourseDetailSerializer(serializers.ModelSerializer):
             "description",
             "status",
             "region",
+            "created_by",       # 👈 added
             "created_by_name",
             "created_at",
             "updated_at",
@@ -104,7 +114,6 @@ class QuizSubmitSerializer(serializers.Serializer):
     """
     Expected payload: { "answers": [ { "question": 1, "option": 5 }, ... ] }
     """
-
     answers = QuizAnswerInputSerializer(many=True)
 
 
@@ -130,3 +139,28 @@ class TrainingQuestionManageSerializer(serializers.ModelSerializer):
     class Meta:
         model = TrainingQuestion
         fields = ["id", "text", "order", "options"]
+
+class CourseLeaderboardEntrySerializer(serializers.ModelSerializer):
+    """
+    One row in the course leaderboard, based on a single best attempt per user.
+    """
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
+    username = serializers.CharField(source="user.username", read_only=True)
+    percent = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TrainingAttempt
+        fields = [
+            "user_id",
+            "username",
+            "score",
+            "total_questions",
+            "percent",
+            "is_passed",
+            "submitted_at",
+        ]
+
+    def get_percent(self, obj):
+        if not obj.total_questions:
+            return 0.0
+        return round((obj.score / obj.total_questions) * 100.0, 2)

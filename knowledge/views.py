@@ -13,6 +13,7 @@ from .ai_stub import run_ai_check
 from django.db import transaction
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
+from accounts.models import Region
 
 
 
@@ -422,25 +423,73 @@ class PublishResourceView(APIView):
 class PublishedResourcesView(APIView):
     permission_classes = [IsAuthenticated]  # you can make this public later if you want
 
+    def get_base_queryset_for_user(self, user):
+        """
+        Base security filter:
+        - Employee / Champion / Officer: only their region + GLOBAL
+        - Council / Admin / others: all published
+        """
+        qs = KnowledgeResource.objects.filter(
+            status=KnowledgeResource.Status.PUBLISHED
+        )
+
+        role = getattr(user, "role", None)
+        region = getattr(user, "region", None)
+
+        if role in ("EMPLOYEE", "CHAMPION", "OFFICER"):
+            if region:
+                qs = qs.filter(Q(region=region) | Q(region=Region.GLOBAL))
+            else:
+                # no region set on user → only GLOBAL content
+                qs = qs.filter(region=Region.GLOBAL)
+
+        # COUNCIL / ADMIN etc → no extra region restriction here
+        return qs
+
     def get(self, request):
         q = (request.query_params.get("q") or "").strip()
-        region = (request.query_params.get("region") or "").strip()
+        region_param = (request.query_params.get("region") or "").strip()
         tag = (request.query_params.get("tag") or "").strip().lower()
 
-        qs = KnowledgeResource.objects.filter(status=KnowledgeResource.Status.PUBLISHED)
-        print(qs.count())
-        if region:
-            qs = qs.filter(region=region)
+        # 1) start from base queryset respecting user region/role
+        qs = self.get_base_queryset_for_user(request.user)
 
+        # 2) optional extra region filter (only *within* allowed set)
+        role = getattr(request.user, "role", None)
+        user_region = getattr(request.user, "region", None)
+
+        if region_param:
+            if role in ("EMPLOYEE", "CHAMPION", "OFFICER"):
+                # they can only filter between their region & GLOBAL
+                allowed = {Region.GLOBAL}
+                if user_region:
+                    allowed.add(user_region)
+
+                if region_param in allowed:
+                    qs = qs.filter(region=region_param)
+                # if region_param not allowed, just ignore it (stays in allowed qs)
+            else:
+                # council/admin can freely filter by any region
+                qs = qs.filter(region=region_param)
+
+        # 3) text search
         if q:
-            qs = qs.filter(Q(title__icontains=q) | Q(description__icontains=q))
+            qs = qs.filter(
+                Q(title__icontains=q) |
+                Q(description__icontains=q)
+            )
 
+        # 4) tag filter (still within base security constraints)
         if tag:
             qs = qs.filter(tags__name=tag)
 
         qs = qs.distinct().order_by("-updated_at")
 
-        return Response(KnowledgeResourceQueueSerializer(qs, many=True).data, status=200)
+        return Response(
+            KnowledgeResourceQueueSerializer(qs, many=True).data,
+            status=200,
+        )
+
 
 
 
